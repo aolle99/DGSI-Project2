@@ -46,6 +46,12 @@ Estudiantes o desarrolladores que actuarán como planificadores de producción, 
 | Gráficas    | Matplotlib              | Integración directa en Streamlit.           |
 | Versionado  | Git + GitHub            | Flujo de trabajo estándar.                  |
 
+#### 3.2 Arquitectura
+- Divide las funcionalidades
+- Sigue patrones de diseño para poder estructurar el fichero adecuadamente
+- Crea diagramas en el readme de la jerarquía de carpetas
+- Usa clean code para organizar y reaprovechar el codigo.
+
 ---
 
 ### 4. Modelo de Datos

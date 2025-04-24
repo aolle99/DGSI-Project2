@@ -14,6 +14,7 @@ from models import (
     SimulationConfig,
     SimulationState
 )
+from simulation import ProductionSimulator
 
 app = FastAPI(
     title="3D Printer Production Simulator",
@@ -32,6 +33,7 @@ bill_of_materials = []
 production_capacity = []
 simulation_config = SimulationConfig()
 simulation_state = None
+simulator = None  # SimPy simulator instance
 
 
 @app.get("/")
@@ -108,6 +110,11 @@ async def create_purchase_order(order: PurchaseOrder):
     order.estimated_delivery = order.issue_date + timedelta(days=supplier.lead_time)
 
     purchase_orders.append(order)
+
+    # Add the order to the simulator if it's running
+    if simulator:
+        simulator.create_purchase_order(order)
+
     return order
 
 
@@ -124,67 +131,70 @@ async def create_manufacturing_order(order: ManufacturingOrder):
         if mo.id == order.id:
             raise HTTPException(status_code=400, detail="Manufacturing Order ID already exists")
     manufacturing_orders.append(order)
+
+    # Add the order to the simulator if it's running
+    if simulator:
+        simulator.create_manufacturing_order(order)
+
     return order
+
+
+@app.get("/bill-of-materials/", response_model=List[BillOfMaterials])
+async def get_bill_of_materials(finished_product_id: Optional[int] = None):
+    if finished_product_id:
+        return [bom for bom in bill_of_materials if bom.finished_product_id == finished_product_id]
+    return bill_of_materials
+
+
+@app.post("/bill-of-materials/", response_model=BillOfMaterials)
+async def create_bill_of_materials(bom: BillOfMaterials):
+    # Check if this BOM entry already exists
+    for existing_bom in bill_of_materials:
+        if (existing_bom.finished_product_id == bom.finished_product_id and 
+            existing_bom.raw_material_id == bom.raw_material_id):
+            raise HTTPException(
+                status_code=400, 
+                detail="BOM entry for this finished product and raw material already exists"
+            )
+
+    bill_of_materials.append(bom)
+    return bom
 
 
 @app.post("/simulation/start/", response_model=SimulationState)
 async def start_simulation(config: SimulationConfig):
-    global simulation_config, simulation_state
+    global simulation_config, simulation_state, simulator
 
     simulation_config = config
-    simulation_state = SimulationState(
-        current_date=date.today(),
-        inventory=[],
-        pending_orders=[],
-        pending_purchases=[],
-        production_history=[],
-        purchase_history=[]
-    )
 
-    # Initialize inventory with config values
-    for product_id, qty in config.initial_inventory.items():
-        simulation_state.inventory.append(InventoryItem(product_id=product_id, qty=qty))
+    # Initialize the SimPy simulator
+    simulator = ProductionSimulator(config)
+
+    # Pass the bill of materials and suppliers to the simulator
+    simulator.bill_of_materials = bill_of_materials
+    simulator.suppliers = suppliers
+
+    simulation_state = simulator.state
 
     return simulation_state
 
 
 @app.post("/simulation/advance-day/", response_model=SimulationState)
 async def advance_day():
-    if not simulation_state:
+    global simulation_state
+
+    if not simulator:
         raise HTTPException(status_code=400, detail="Simulation not started")
 
-    # Advance the date
-    simulation_state.current_date += timedelta(days=1)
-
-    # Generate new orders
-    num_orders = random.randint(simulation_config.daily_order_min, simulation_config.daily_order_max)
-    # Logic for generating orders would go here
-
-    # Process pending purchase orders
-    for po in simulation_state.pending_purchases:
-        if po.estimated_delivery <= simulation_state.current_date:
-            po.status = "received"
-            # Update inventory
-            for item in simulation_state.inventory:
-                if item.product_id == po.product_id:
-                    item.qty += po.quantity
-                    break
-            else:
-                simulation_state.inventory.append(InventoryItem(product_id=po.product_id, qty=po.quantity))
-
-            # Move to history
-            simulation_state.purchase_history.append(po)
-            simulation_state.pending_purchases.remove(po)
-
-    # Process manufacturing orders
-    # Logic for processing manufacturing orders would go here
+    # Use the SimPy simulator to advance the simulation by one day
+    simulation_state = simulator.run_day()
 
     return simulation_state
 
 
 @app.get("/simulation/export/", response_model=dict)
 async def export_simulation():
-    if not simulation_state:
+    if not simulator:
         raise HTTPException(status_code=400, detail="Simulation not started")
 
     return {
@@ -196,14 +206,32 @@ async def export_simulation():
     }
 
 
+@app.get("/simulation/purchase-suggestions/")
+async def get_purchase_suggestions():
+    if not simulator:
+        raise HTTPException(status_code=400, detail="Simulation not started")
+
+    # Get purchase suggestions from the simulator
+    suggestions = simulator.suggest_purchases()
+
+    return suggestions
+
+
 @app.post("/simulation/import/")
 async def import_simulation(data: dict):
-    global simulation_config, simulation_state, products, suppliers, bill_of_materials
+    global simulation_config, simulation_state, products, suppliers, bill_of_materials, simulator
 
     simulation_config = SimulationConfig(**data["config"])
     simulation_state = SimulationState(**data["state"])
     products = [Product(**p) for p in data["products"]]
     suppliers = [Supplier(**s) for s in data["suppliers"]]
     bill_of_materials = [BillOfMaterials(**bom) for bom in data["bill_of_materials"]]
+
+    # Initialize the simulator with the imported state
+    simulator = ProductionSimulator(simulation_config, simulation_state)
+
+    # Pass the bill of materials and suppliers to the simulator
+    simulator.bill_of_materials = bill_of_materials
+    simulator.suppliers = suppliers
 
     return {"message": "Simulation imported successfully"}
