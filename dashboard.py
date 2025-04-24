@@ -333,7 +333,7 @@ if simulation_running:
         # Display the styled dataframe with sorting enabled
         st.markdown("### Current Inventory Levels")
         st.dataframe(
-            inventory_df.style.applymap(color_status, subset=["Status"]),
+            inventory_df.style.map(color_status, subset=["Status"]),
             use_container_width=True,
             hide_index=True,
             column_config={
@@ -527,7 +527,7 @@ if simulation_running:
 
             # Filter the dataframe
             filtered_df = orders_df
-            if status_filter:
+            if status_filter and not orders_df.empty and "Raw Status" in orders_df.columns:
                 filtered_df = filtered_df[filtered_df["Raw Status"].isin(status_filter)]
             if product_filter:
                 filtered_df = filtered_df[filtered_df["Product"].isin(product_filter)]
@@ -547,7 +547,7 @@ if simulation_running:
                 display_df = filtered_df.drop(columns=["Raw Status"])
 
                 st.dataframe(
-                    display_df.style.applymap(color_status, subset=["Status"]),
+                    display_df.style.map(color_status, subset=["Status"]),
                     use_container_width=True,
                     hide_index=True,
                     column_config={
@@ -851,8 +851,8 @@ if simulation_running:
 
                 st.dataframe(
                     display_df.style
-                        .applymap(color_status, subset=["Status"])
-                        .applymap(color_delivery, subset=["Delivery Status"]),
+                        .map(color_status, subset=["Status"])
+                        .map(color_delivery, subset=["Delivery Status"]),
                     use_container_width=True,
                     hide_index=True,
                     column_config={
@@ -1401,7 +1401,7 @@ if simulation_running:
                     display_df = req_df.drop(columns=["Material ID"])
 
                     st.dataframe(
-                        display_df.style.applymap(color_status, subset=["Status"]),
+                        display_df.style.map(color_status, subset=["Status"]),
                         use_container_width=True,
                         hide_index=True,
                         column_config={
