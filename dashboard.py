@@ -818,12 +818,21 @@ if simulation_running:
                         default=po_df["Supplier"].unique()
                     )
                 else:
-                    supplier_filter = []
-
-            # Filter the dataframe
+                    supplier_filter = []            # Filter the dataframe
             filtered_df = po_df
             if status_filter:
-                filtered_df = filtered_df[filtered_df["Raw Status"].isin(status_filter)]
+                # Print columns for debugging
+                print("DataFrame columns:", filtered_df.columns.tolist())
+                # Check if "Raw Status" column exists
+                if "Raw Status" in filtered_df.columns:
+                    filtered_df = filtered_df[filtered_df["Raw Status"].isin(status_filter)]
+                else:
+                    st.error("Column 'Raw Status' not found in the DataFrame")
+                    # Alternative: Check if it might be named differently
+                    status_columns = [col for col in filtered_df.columns if "status" in col.lower()]
+                    if status_columns:
+                        st.warning(f"Found similar columns: {status_columns}. Using {status_columns[0]}")
+                        filtered_df = filtered_df[filtered_df[status_columns[0]].isin(status_filter)]
             if supplier_filter:
                 filtered_df = filtered_df[filtered_df["Supplier"].isin(supplier_filter)]
 
